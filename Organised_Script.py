@@ -20,6 +20,7 @@ import pprint
 import pdb
 from copy import deepcopy
 import math
+from math import sqrt
 
 # GLOBAL PARAMETERS
 
@@ -97,7 +98,18 @@ def rotation_3d(alpha,beta,x1,y1,z1):
     z3 = y2*(math.sin(alpha)) + z2*(math.cos(alpha))
     return x3,y3,z3
 
+# def x_rotation(alpha,y,z):
+#     alpha = math.radians(alpha)
+#     y_new = y*(math.cos(alpha)) - z*(math.sin(alpha))
+#     z_new = y*(math.sin(alpha)) + z*(math.cos(alpha))
+#     return y_new, z_new
 
+
+def find_depth(slice_angle,upright_angle,shrink_fac,x,y,z):
+    z = z*shrink_fac
+    x_coord,y_coord,z_coord = rotation_3d(slice_angle,upright_angle,x,y,z)
+    depth = sqrt(x_coord**2 + y_coord**2 + z_coord**2)
+    return depth
 
 
 
