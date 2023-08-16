@@ -176,7 +176,9 @@ def layer_type_species(layer, spex, type):
     layer_type_spex_idx_df = cell_feat_df.loc[layer_type_spex_idx]
     return layer_type_spex_idx_df
 
-layer_type_spex_idx_df = layer_type_species(layer, spex, type)
+# ADD SOMETHING FANCY
+
+# layer_type_spex_idx_df = layer_type_species(layer, spex, type)
     # layer_spiny_human = set(cells_in_layer)&set(spiny_cells)& set(human_cells)
     # layer_aspiny_human = set(cells_in_layer)&set(aspiny_cells)& set(human_cells)
     # layer_spiny_mice = set(cells_in_layer)&set(spiny_cells)& set(mice_cells)
