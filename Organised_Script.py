@@ -13,6 +13,8 @@ from allensdk.core.cell_types_cache import CellTypesCache
 from allensdk.api.queries.cell_types_api import CellTypesApi
 from allensdk.core.cell_types_cache import ReporterStatus as RS
 
+from Viz import Viz
+
 # builtins
 from pathlib import Path
 import time
@@ -136,11 +138,15 @@ def find_max_eucl_distance(cell_id, cell_feat_orient_new_df):
     slice_angle = cell_feat_orient_new_df.loc[cell_idx, "estimated_slice_angle"]
     upright_angle = cell_feat_orient_new_df.loc[cell_idx, "upright_angle"]
     shrink_factor = cell_feat_orient_new_df.loc[cell_idx, "estimated_shrinkage_factor"]
+    z_soma_shrink = z_soma * shrink_factor
     x_soma_rot, y_soma_rot, z_soma_rot = proper_rotation(
         slice_angle, upright_angle, x_soma, y_soma, z_soma, shrink_factor
     )
     eucl_distance = []
+    shrinked_eucl_distance = []
     rot_eucl_distance = []
+    xy_distance = []
+    xy_rot_distance = []
     for idx in morph_df.index:
         x_node = morph_df.loc[idx, "x"]
         y_node = morph_df.loc[idx, "y"]
@@ -148,6 +154,14 @@ def find_max_eucl_distance(cell_id, cell_feat_orient_new_df):
         eucl_distance.append(
             sqrt(
                 (x_node - x_soma) ** 2 + (y_node - y_soma) ** 2 + (z_node - z_soma) ** 2
+            )
+        )
+        z_node_shrink = z_node * shrink_factor
+        shrinked_eucl_distance.append(
+            sqrt(
+                (x_node - x_soma) ** 2
+                + (y_node - y_soma) ** 2
+                + (z_node_shrink - z_soma_shrink) ** 2
             )
         )
         x_node_rot, y_node_rot, z_node_rot = proper_rotation(
@@ -160,11 +174,66 @@ def find_max_eucl_distance(cell_id, cell_feat_orient_new_df):
                 + (z_node_rot - z_soma_rot) ** 2
             )
         )
+        xy_distance.append(sqrt((x_node - x_soma) ** 2 + (y_node - y_soma) ** 2))
+        xy_rot_distance.append(
+            sqrt((x_node_rot - x_soma_rot) ** 2 + (y_node_rot - y_soma_rot) ** 2)
+        )
 
     max_eucl_distance = max(eucl_distance)
+    max_shrinked_eucl_distance = max(shrinked_eucl_distance)
     max_rot_eucl_distance = max(rot_eucl_distance)
+    max_xy_distance = max(xy_distance)
+    max_xy_rot_distance = max(xy_rot_distance)
+    # idx_position_far_node = xy_rot_distance.index(max_xy_rot_distance)
 
-    return max_eucl_distance, max_rot_eucl_distance
+    return (
+        max_eucl_distance,
+        max_rot_eucl_distance,
+        max_shrinked_eucl_distance,
+        max_xy_distance,
+        max_xy_rot_distance,
+        # idx_position_far_node,
+    )
+
+
+def calc_distance_from_pia(cell_id, idx_node, cell_feat_orient_new_df):
+    morph = reconstruct(cell_id)
+    morph_df = pd.DataFrame(morph.compartment_list)
+    cell_idx = cell_feat_orient_new_df[
+        cell_feat_orient_new_df["specimen_id"] == cell_id
+    ].index
+    soma_distance_from_pia = cell_feat_orient_new_df.loc[
+        cell_idx, "soma_distance_from_pia"
+    ]
+    slice_angle = cell_feat_orient_new_df.loc[cell_idx, "estimated_slice_angle"]
+    upright_angle = cell_feat_orient_new_df.loc[cell_idx, "upright_angle"]
+    shrink_factor = cell_feat_orient_new_df.loc[cell_idx, "estimated_shrinkage_factor"]
+    x_soma, y_soma, z_soma = proper_rotation(
+        slice_angle,
+        upright_angle,
+        morph_df.loc[0, "x"],
+        morph_df.loc[0, "y"],
+        morph_df.loc[0, "z"],
+        shrink_factor,
+    )
+    x_far_node, y_far_node, z_far_node = proper_rotation(
+        slice_angle,
+        upright_angle,
+        morph_df.loc[idx_node, "x"],
+        morph_df.loc[idx_node, "y"],
+        morph_df.loc[idx_node, "z"],
+        shrink_factor,
+    )
+    # x_pia = x_soma
+    y_pia = y_soma + soma_distance_from_pia
+    # z_pia = z_soma  # I don't know if this is correct
+    # distance_from_pia = sqrt(
+    #     (x_far_node - x_pia) ** 2
+    #     + (y_far_node - y_pia) ** 2
+    #     + (z_far_node - z_pia) ** 2
+    # )
+    distance_from_pia = y_pia - y_far_node
+    return distance_from_pia
 
 
 ##########################################################################################################
@@ -172,17 +241,17 @@ def find_max_eucl_distance(cell_id, cell_feat_orient_new_df):
 
 download_recos = False
 
-cell_id = 479010903
+cell_id = 479013100
 
-layer = "5"  # '1', '2', '2/3', '3', '4', '6', '6a', '6b'
+layer = "2/3"  # '1', '2', '3', '4', '5', '6', '6a', '6b'
 
 spex = "Mus musculus"  # 'Homo Sapiens'
 
 neur_type = "spiny"  # 'aspiny'
 
-slice_angle = 3.24431361952
+slice_angle = 0
 
-upright_angle = 301.125094376879
+upright_angle = 176.909187120959
 
 shrink_factor = 3.05757172357999
 
@@ -347,186 +416,147 @@ mice_spiny_orient_cells_idx = set(spiny_orient_cells) & set(mice_orient_cells)
 #     x_api_den.append(morph_df.loc[idx,'x'].tolist())
 #     y_api_den.append(morph_df.loc[idx,'y'].tolist())
 
+cell_id1 = 488117124
+(
+    max_xyz_distance1,
+    max_xyz_rot_distance1,
+    max_shrinked_eucl_distance1,
+    max_xy_distance1,
+    max_xy_rot_distance1,
+) = find_max_eucl_distance(cell_id1, cell_feat_orient_new_df)
+cell_idx = cell_feat_orient_new_df[
+    cell_feat_orient_new_df["specimen_id"] == cell_id1
+].index
+soma_dist_xyz = cell_feat_orient_new_df.loc[cell_idx, "soma_distance_from_pia"]
+# soma_dist_xy = (max_xy_distance1 * soma_dist_xyz) / max_xyz_distance1
+# soma_dist_xy = (max_xy_distance1 * soma_dist_xyz) / max_shrinked_eucl_distance1
+soma_dist_xy = (max_xy_rot_distance1 * soma_dist_xyz) / max_xyz_rot_distance1
+
+
+specimens = [
+    479013100,
+    567952169,  # not problematic
+    582644266,
+    501799874,
+    497611660,
+    535708196,
+    586073683,
+    478888052,
+    487664663,
+    554807924,
+    478499902,
+    478586295,
+    510715606,
+    569723367,
+    485837504,
+    479010903,
+    471141261,
+    314900022,
+    512322162,
+    # 313862167,313862167,
+    585832440,
+    502999078,
+    573404307,
+    476049169,
+    480351780,
+    580162374,
+    386049446,
+    397353539,
+    475585413,  # PROBLEMATIC !!!!!
+    501845152,  # not problematic
+    329550137,  # not problematic
+    488117124,
+    574067499,
+    486560376,  # not problematic
+    485184849,
+    567354967,
+    591268268,
+    # 478110866,478110866,
+    485835016,
+    589760138,
+    480114344,
+    530737765,
+    515524026,
+    583146274,
+    562541627,
+    574734127,
+    476616076,
+    # 565417112,565417112,
+    333785962,
+    476048909,
+    471087830,
+    585952606,
+    524689239,  # not problematic
+    476451456,
+    471767045,
+    # 321708130,321708130,
+    480003970,
+    480116737,
+    483020137,
+    515986607,
+    594091004,
+    321906005,
+    565863515,
+    569723405,
+    609435731,
+    515249852,
+    422738880,
+    487601493,
+    471786879,
+    580010290,
+    # 473540161,473540161,
+    480124551,
+    579662957,  # not problematic
+    555345752,
+    476126528,
+    478892782,
+    584231995,
+    557037024,
+    # 556968207,556968207,
+    486111903,
+    582917630,  # not problematic
+    488501071,
+    475202388,
+    580161872,
+    585947309,  # not problematic
+    475068599,
+    519749342,
+    510658021,
+    485835055,
+    586071425,
+    561517025,
+    476131588,
+    471077857,
+    584872371,
+    584680861,
+]
+
+# This takes like 10 seconds for doing it for 100 cells
+for cell_id in specimens:
+    morph = reconstruct(cell_id)
+    morph_df = pd.DataFrame(morph.compartment_list)
+    cell_idx = cell_feat_orient_new_df[
+        cell_feat_orient_new_df["specimen_id"] == cell_id
+    ].index
+    slice_angle = cell_feat_orient_new_df.loc[cell_idx, "estimated_slice_angle"].values
+    upright_angle = cell_feat_orient_new_df.loc[cell_idx, "upright_angle"].values
+    shrink_factor = cell_feat_orient_new_df.loc[
+        cell_idx, "estimated_shrinkage_factor"
+    ].values
+    x_coord, y_coord, z_coord = proper_rotation(
+        slice_angle,
+        upright_angle,
+        morph_df["x"],
+        morph_df["y"],
+        morph_df["z"],
+        shrink_factor,
+    )
+    morph_df["x"] = x_coord
+    morph_df["y"] = y_coord
+    morph_df["z"] = z_coord
+
 
 ################################################################################################################################
 # VISUALIZATION
 
-# This is the plot of the "shape" of a asingle neuron
-fig, ax = plt.subplots(1, 1)
-
-for d_type, color in [
-    [2, axon_color],
-    [3, bas_dendrite_color],
-    [4, api_dendrite_color],
-]:
-    df = morph_df[morph_df["type"] == d_type]
-    ax.scatter(df["x"], df["y"], color=color)
-ax.invert_yaxis()
-plt.ylabel("y")
-plt.xlabel("x")
-plt.legend(["axons", "basal dendrites", "apical dendrites"])
-# plt.show()
-
-# #This is the plot of cortical depth (of a single neuron)  IT IS NOT BECAUSE WE HAVE TO ROTATE THE NEURON FIRST
-# fig,ax=plt.subplots(1,1)
-# plt.hist(morph_df.y, bins=6, orientation="horizontal", color = 'm')
-# ax.invert_yaxis()
-# plt.ylabel("depth")
-# plt.xlabel("number")
-# #plt.show()
-
-# #This is the normalised plot of cortical depth (of a single neuron)
-# data = morph_df.y
-# fig,ax=plt.subplots(1,1)
-# plt.hist(data/np.max(data), bins=[0,0.1,0.4,0.5,0.8,1.0], orientation="horizontal", color = 'g')
-# ax.invert_yaxis()
-# plt.ylabel("normalised depth")
-# plt.xlabel("number")
-# #plt.show()
-
-# This is the plot of the mice_spiny's somas position, colours are associated to layers
-fig, ax = plt.subplots(1, 1)
-col_dict = {
-    "1": "r",
-    "2": "#ff7f0e",
-    "2/3": "y",
-    "3": "g",
-    "4": "c",
-    "5": "b",
-    "6": "#9467bd",
-    "6a": "#e377c2",
-    "6b": "#7f7f7f",
-}
-soma_y_coord_vec = []
-
-for cell_idx in mice_spiny_cells_idx:
-    l_type = cell_feat_df.loc[cell_idx, "structure__layer"]
-    color = col_dict[l_type]
-    cell_id = cell_feat_df.loc[cell_idx, "specimen_id"]
-    morph = reconstruct(cell_id)
-    morph_df = pd.DataFrame(morph.compartment_list)
-    soma_x_coord = morph_df.loc[0, "x"]
-    soma_y_coord = morph_df.loc[0, "y"]
-    soma_y_coord_vec.append(soma_y_coord)
-    ax.scatter(soma_x_coord, soma_y_coord, color=color, label=color)
-
-red = mpatches.Patch(color="red", label="Layer 1")
-orange = mpatches.Patch(color="#ff7f0e", label="Layer 2")
-yellow = mpatches.Patch(color="y", label="Layer 2/3")
-green = mpatches.Patch(color="g", label="Layer 3")
-cian = mpatches.Patch(color="c", label="Layer 4")
-blue = mpatches.Patch(color="b", label="Layer 5")
-purple = mpatches.Patch(color="#9467bd", label="Layer 6")
-pink = mpatches.Patch(color="#e377c2", label="Layer 6a")
-grey = mpatches.Patch(color="#7f7f7f", label="Layer 6b")
-ax.invert_yaxis()
-plt.ylabel("y")
-plt.xlabel("x")
-plt.legend(handles=[red, orange, yellow, green, cian, blue, purple, pink, grey])
-# plt.show()
-
-
-# This is an histogram of the y-coordinates of the mice_spiny_cells' somas
-fig, ax = plt.subplots(1, 1)
-plt.hist(soma_y_coord_vec, bins=6, orientation="horizontal", color=color)
-ax.invert_yaxis()
-# plt.show()
-
-
-# This is in an histogram of the overall depth of mice_spiny_cells, colours are associated to layers
-fig, ax = plt.subplots(1, 1)
-for cell_idx in mice_spiny_cells_idx:
-    l_type = cell_feat_df.loc[cell_idx, "structure__layer"]
-    color = col_dict[l_type]
-    depth = cell_feat_df.loc[cell_idx, "overall_depth"]
-    ax.hist(depth, orientation="horizontal", color=color, label=color)
-
-red = mpatches.Patch(color="red", label="Layer 1")
-orange = mpatches.Patch(color="#ff7f0e", label="Layer 2")
-yellow = mpatches.Patch(color="y", label="Layer 2/3")
-green = mpatches.Patch(color="g", label="Layer 3")
-cian = mpatches.Patch(color="c", label="Layer 4")
-blue = mpatches.Patch(color="b", label="Layer 5")
-purple = mpatches.Patch(color="#9467bd", label="Layer 6")
-pink = mpatches.Patch(color="#e377c2", label="Layer 6a")
-grey = mpatches.Patch(color="#7f7f7f", label="Layer 6b")
-ax.invert_yaxis()
-plt.ylabel("y")
-plt.xlabel("x")
-plt.legend(handles=[red, orange, yellow, green, cian, blue, purple, pink, grey])
-# plt.show()
-
-
-# This is an histogram of the soma distance form pia for the mice_spiny cellls that has also orientation data (same colour so no distinction between layers)
-fig, ax = plt.subplots(1, 1)
-plt.hist(
-    cell_feat_orient_new_df.soma_distance_from_pia, orientation="horizontal", color="m"
-)
-ax.invert_yaxis()
-plt.ylabel("depth")
-plt.xlabel("number")
-# plt.show()
-
-
-depth = []
-# This is a histogram of the soma distance form pia for the mice_spiny cellls that has also orientation data (this time with distinction of layers that depends on colours)
-fig, ax = plt.subplots(1, 1)
-for cell_idx in mice_spiny_orient_cells_idx:
-    l_type = cell_feat_orient_new_df.loc[cell_idx, "structure__layer"]
-    color = col_dict[l_type]
-    # if cell_feat_orient_df.loc[cell_idx,'soma_distance_from_pia'] != np.nan:
-    #       depth.append(cell_feat_orient_df.loc[cell_idx,'soma_distance_from_pia'])
-    #       ax.hist(depth[-1], orientation="horizontal", color = color, label = color)
-    depth = cell_feat_orient_new_df.loc[cell_idx, "soma_distance_from_pia"]
-    ax.hist(depth, orientation="horizontal", color=color, label=color)
-red = mpatches.Patch(color="red", label="Layer 1")
-orange = mpatches.Patch(color="#ff7f0e", label="Layer 2")
-yellow = mpatches.Patch(color="y", label="Layer 2/3")
-green = mpatches.Patch(color="g", label="Layer 3")
-cian = mpatches.Patch(color="c", label="Layer 4")
-blue = mpatches.Patch(color="b", label="Layer 5")
-purple = mpatches.Patch(color="#9467bd", label="Layer 6")
-pink = mpatches.Patch(color="#e377c2", label="Layer 6a")
-grey = mpatches.Patch(color="#7f7f7f", label="Layer 6b")
-ax.invert_yaxis()
-plt.ylabel("soma_depth")
-plt.xlabel("x")
-plt.legend(handles=[red, orange, yellow, green, cian, blue, purple, pink, grey])
-# plt.show()
-
-
-fig = plt.figure()
-ax = fig.add_subplot(111, projection="3d")
-for d_type, color in [
-    [2, axon_color],
-    [3, bas_dendrite_color],
-    [4, api_dendrite_color],
-]:
-    df = morph_df[morph_df["type"] == d_type]
-    x_coord, y_coord, z_coord = proper_rotation(
-        slice_angle, upright_angle, df["x"], df["y"], df["z"], shrink_factor
-    )
-    ax.scatter(x_coord, z_coord, y_coord, color=color)
-ax.invert_xaxis()
-plt.ylabel("y")
-plt.xlabel("x")
-plt.legend(["axons", "basal dendrites", "apical dendrites"])
-# plt.show()
-
-
-fig, ax = plt.subplots(1, 1)
-for d_type, color in [
-    [2, axon_color],
-    [3, bas_dendrite_color],
-    [4, api_dendrite_color],
-]:
-    df = morph_df[morph_df["type"] == d_type]
-    x_coord, y_coord, z_coord = proper_rotation(
-        slice_angle, upright_angle, df["x"], df["y"], df["z"], shrink_factor
-    )
-    ax.scatter(x_coord, y_coord, color=color)
-ax.invert_yaxis()
-plt.ylabel("y")
-plt.xlabel("x")
-plt.legend(["axons", "basal dendrites", "apical dendrites"])
-plt.show()
+viz = Viz()
